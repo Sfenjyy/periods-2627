@@ -242,9 +242,12 @@ const SCOPES = ["User.Read","Files.ReadWrite","Sites.ReadWrite.All"];
 // MSAL setup
 // ═══════════════════════════════════════════════════════════════
 const msalApp = new msal.PublicClientApplication({
-  auth: { clientId: CONFIG.clientId, tenantId: CONFIG.tenantId,
-          redirectUri: window.location.origin + window.location.pathname },
-  cache: { cacheLocation:"sessionStorage" }
+  auth: {
+    clientId:    CONFIG.clientId,
+    authority:   `https://login.microsoftonline.com/${CONFIG.tenantId}`,
+    redirectUri: window.location.origin + window.location.pathname
+  },
+  cache: { cacheLocation: "sessionStorage" }
 });
 
 let currentUser = null, isAdmin = false;
@@ -258,6 +261,7 @@ let pendingChanges = {};  // sheetName → { rowIdx → {col, value} }
 // ═══════════════════════════════════════════════════════════════
 async function signIn() {
   try {
+    await msalApp.initialize();
     const res = await msalApp.loginPopup({ scopes: SCOPES });
     currentUser = res.account;
     await initApp();
@@ -691,6 +695,7 @@ function colToLetter(col) {
 // Auto-login on page load
 // ═══════════════════════════════════════════════════════════════
 window.addEventListener("load", async () => {
+  await msalApp.initialize();
   await msalApp.handleRedirectPromise();
   const accounts = msalApp.getAllAccounts();
   if (accounts.length) {
