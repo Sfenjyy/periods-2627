@@ -4,7 +4,6 @@
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>Périodes 2026-2027 – Collège des Apôtres</title>
-<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
 <style>
   :root {
     --blue-dark:  #1F4E79;
@@ -694,21 +693,41 @@ function colToLetter(col) {
 // ═══════════════════════════════════════════════════════════════
 // Auto-login on page load
 // ═══════════════════════════════════════════════════════════════
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("Failed to load: " + src));
+    document.head.appendChild(s);
+  });
+}
+
 async function init() {
-  if (typeof msal === "undefined") {
-    alert("Erreur: bibliothèque d'authentification non chargée.");
-    return;
-  }
   const loginBtn = document.querySelector(".btn-primary");
   if (loginBtn) { loginBtn.disabled = true; loginBtn.textContent = "Chargement..."; }
 
-  msalApp = new msal.PublicClientApplication(msalConfig);
-  await msalApp.initialize();
+  try {
+    if (typeof msal === "undefined") {
+      await loadScript("https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js");
+    }
+  } catch(e) {
+    // Try fallback CDN
+    try {
+      await loadScript("https://cdn.jsdelivr.net/npm/@azure/msal-browser@2.38.3/lib/msal-browser.min.js");
+    } catch(e2) {
+      alert("Erreur: impossible de charger la bibliothèque d'authentification. Vérifiez votre connexion internet.");
+      return;
+    }
+  }
 
   if (loginBtn) {
     loginBtn.disabled = false;
     loginBtn.textContent = "🔐 Se connecter avec Microsoft";
   }
+
+  msalApp = new msal.PublicClientApplication(msalConfig);
+  await msalApp.initialize();
 
   const resp = await msalApp.handleRedirectPromise();
   if (resp) {
