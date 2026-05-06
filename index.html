@@ -241,14 +241,15 @@ const SCOPES = ["User.Read","Files.ReadWrite","Sites.ReadWrite.All"];
 // ═══════════════════════════════════════════════════════════════
 // MSAL setup
 // ═══════════════════════════════════════════════════════════════
-const msalApp = new msal.PublicClientApplication({
+const msalConfig = {
   auth: {
     clientId:    CONFIG.clientId,
     authority:   `https://login.microsoftonline.com/${CONFIG.tenantId}`,
     redirectUri: window.location.origin + window.location.pathname
   },
   cache: { cacheLocation: "sessionStorage" }
-});
+};
+let msalApp = null;  // initialized inside init() to avoid race condition
 
 let currentUser = null, isAdmin = false;
 let coordinatorMap = {};  // subject → cycles[]
@@ -261,7 +262,6 @@ let pendingChanges = {};  // sheetName → { rowIdx → {col, value} }
 // ═══════════════════════════════════════════════════════════════
 async function signIn() {
   try {
-    await msalApp.initialize();
     const res = await msalApp.loginPopup({ scopes: SCOPES });
     currentUser = res.account;
     await initApp();
@@ -694,15 +694,36 @@ function colToLetter(col) {
 // ═══════════════════════════════════════════════════════════════
 // Auto-login on page load
 // ═══════════════════════════════════════════════════════════════
-window.addEventListener("load", async () => {
+async function init() {
+  if (typeof msal === "undefined") {
+    alert("Erreur: bibliothèque d'authentification non chargée.");
+    return;
+  }
+  const loginBtn = document.querySelector(".btn-primary");
+  if (loginBtn) { loginBtn.disabled = true; loginBtn.textContent = "Chargement..."; }
+
+  msalApp = new msal.PublicClientApplication(msalConfig);
   await msalApp.initialize();
-  await msalApp.handleRedirectPromise();
+
+  if (loginBtn) {
+    loginBtn.disabled = false;
+    loginBtn.textContent = "🔐 Se connecter avec Microsoft";
+  }
+
+  const resp = await msalApp.handleRedirectPromise();
+  if (resp) {
+    currentUser = resp.account;
+    await initApp();
+    return;
+  }
   const accounts = msalApp.getAllAccounts();
   if (accounts.length) {
     currentUser = accounts[0];
     await initApp();
   }
-});
+}
+
+window.addEventListener("load", init);
 </script>
 </body>
 </html>
