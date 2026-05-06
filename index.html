@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Périodes 2026-2027 – Collège des Apôtres</title>
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+<style>
+  :root {
+    --blue-dark:  #1F4E79;
+    --blue-mid:   #2E75B6;
+    --blue-light: #D6E4F0;
+    --green:      #E2EFDA;
+    --green-dark: #375623;
+    --orange:     #FCE4D6;
+    --yellow:     #FFF2CC;
+    --red:        #C00000;
+    --grey:       #808080;
+    --white:      #ffffff;
+    --border:     #BFBFBF;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 13px; background: #f0f4f8; color: #1a1a1a; }
+
+  /* ── Header ── */
+  header {
+    background: var(--blue-dark);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,.3);
+  }
+  header h1 { font-size: 16px; font-weight: bold; }
+  header .sub { font-size: 11px; opacity: .8; margin-top:2px; }
+  .user-info { display:flex; align-items:center; gap:10px; }
+  .user-badge { background:var(--blue-mid); padding:4px 10px; border-radius:20px; font-size:11px; }
+  .admin-badge { background:#C00000; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:bold; }
+  button.btn {
+    padding: 6px 14px; border:none; border-radius:4px; cursor:pointer;
+    font-size:12px; font-weight:bold; transition: opacity .15s;
+  }
+  button.btn:hover { opacity:.85; }
+  .btn-primary { background:var(--blue-mid); color:white; }
+  .btn-danger  { background:#c00; color:white; }
+  .btn-success { background:#375623; color:white; }
+  .btn-sm { padding:3px 9px; font-size:11px; }
+
+  /* ── Login Screen ── */
+  #login-screen {
+    display:flex; flex-direction:column; align-items:center;
+    justify-content:center; height:100vh; gap:20px;
+  }
+  .login-card {
+    background:white; border-radius:12px; padding:40px 50px;
+    box-shadow:0 4px 24px rgba(0,0,0,.12); text-align:center; max-width:400px;
+  }
+  .login-card .logo { font-size:36px; margin-bottom:12px; }
+  .login-card h2 { color:var(--blue-dark); margin-bottom:6px; }
+  .login-card p  { color:#666; margin-bottom:24px; font-size:12px; }
+
+  /* ── Main Layout ── */
+  #app { display:none; }
+  .container { max-width:1400px; margin:0 auto; padding:16px; }
+
+  /* ── Cycle Tabs ── */
+  .tabs { display:flex; gap:4px; margin-bottom:16px; flex-wrap:wrap; }
+  .tab {
+    padding:7px 16px; border-radius:6px 6px 0 0; cursor:pointer;
+    background:#dde7f0; color:var(--blue-dark); font-weight:bold;
+    font-size:12px; border:1px solid var(--border); border-bottom:none;
+    transition: background .15s;
+  }
+  .tab:hover { background:#c5d8ec; }
+  .tab.active { background:var(--blue-dark); color:white; }
+  .tab.has-data::after { content:" ✓"; color:#7CFC00; font-size:10px; }
+
+  /* ── Cycle Panel ── */
+  .cycle-panel {
+    background:white; border-radius:0 8px 8px 8px;
+    border:1px solid var(--border);
+    padding:16px; display:none;
+    box-shadow:0 2px 8px rgba(0,0,0,.06);
+  }
+  .cycle-panel.active { display:block; }
+
+  /* ── 35h Counter Bar ── */
+  .counters-bar {
+    display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap;
+  }
+  .counter-pill {
+    background:var(--blue-light); border-radius:20px;
+    padding:4px 14px; font-size:11px; font-weight:bold;
+    border:1px solid var(--border); display:flex; gap:6px; align-items:center;
+  }
+  .counter-pill .label { color:var(--blue-dark); }
+  .counter-pill .val   { color:var(--green-dark); }
+  .counter-pill.over   { background:#ffe0e0; border-color:#c00; }
+  .counter-pill.over .val { color:#c00; }
+
+  /* ── Table ── */
+  .table-wrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; min-width:600px; }
+  th, td { border:1px solid var(--border); padding:5px 7px; white-space:nowrap; }
+  thead tr.class-hdr th { background:var(--blue-mid); color:white; text-align:center; font-size:11px; }
+  thead tr.sub-hdr th   { font-size:10px; text-align:center; }
+  thead tr.sub-hdr th.col-25  { background:var(--blue-light); color:var(--blue-dark); }
+  thead tr.sub-hdr th.col-26  { background:var(--green); color:var(--green-dark); }
+  thead tr.sub-hdr th.col-rem { background:#F2F2F2; color:#555; }
+  td.subject { font-weight:bold; font-size:11px; text-align:left; padding-left:8px; min-width:160px; }
+  td.v25 { background:var(--blue-light); color:var(--blue-dark); text-align:center; font-size:11px; }
+  td.admin-row td { background:var(--orange) !important; }
+  td.lock-icon { text-align:center; font-size:10px; color:var(--grey); width:24px; }
+  .total-row td { background:var(--yellow); font-weight:bold; text-align:center; font-size:11px; }
+  .total-row td.subject { text-align:left; }
+  .total-val.over { color:#c00 !important; }
+
+  /* ── Inputs ── */
+  input.v26-input {
+    width:52px; border:1px solid #aaa; border-radius:3px;
+    padding:2px 4px; text-align:center; font-size:11px;
+    background:var(--green);
+  }
+  input.v26-input:disabled {
+    background:var(--orange); color:var(--grey); cursor:not-allowed; border-color:#ddd;
+  }
+  input.v26-input:focus { outline:2px solid var(--blue-mid); }
+  input.v26-input.over  { border-color:#c00; background:#ffe0e0; }
+  textarea.rem-input {
+    width:150px; min-height:28px; border:1px solid #ccc; border-radius:3px;
+    padding:2px 4px; font-size:10px; resize:vertical; font-family:Arial,sans-serif;
+  }
+  textarea.rem-input:disabled { background:#f5f5f5; color:#aaa; cursor:not-allowed; }
+
+  /* ── Save bar ── */
+  .save-bar {
+    position:sticky; bottom:0; background:white; border-top:2px solid var(--border);
+    padding:10px 20px; display:flex; align-items:center; justify-content:space-between;
+    box-shadow:0 -2px 8px rgba(0,0,0,.1); z-index:50;
+  }
+  .save-status { font-size:11px; color:#666; }
+  .save-status.saving { color:var(--blue-mid); }
+  .save-status.saved  { color:var(--green-dark); }
+  .save-status.error  { color:#c00; }
+
+  /* ── Toast ── */
+  #toast {
+    position:fixed; bottom:70px; right:20px; padding:10px 18px;
+    border-radius:6px; font-size:12px; font-weight:bold;
+    display:none; z-index:999; box-shadow:0 2px 10px rgba(0,0,0,.2);
+  }
+  #toast.success { background:#E2EFDA; color:var(--green-dark); border:1px solid #a9c9a0; }
+  #toast.error   { background:#ffe0e0; color:#c00; border:1px solid #f1a0a0; }
+
+  /* ── Spinner ── */
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid #ccc;
+    border-top-color:var(--blue-mid); border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ── Legend ── */
+  .legend { display:flex; gap:12px; margin-bottom:12px; flex-wrap:wrap; font-size:10px; }
+  .legend-item { display:flex; align-items:center; gap:4px; }
+  .legend-box  { width:12px; height:12px; border:1px solid #ccc; border-radius:2px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="logo">🏫</div>
+    <h2>Collège des Apôtres</h2>
+    <p>Saisie des périodes 2026-2027<br/>Connectez-vous avec votre compte Office 365</p>
+    <button class="btn btn-primary" onclick="signIn()" style="width:100%;padding:10px;">
+      🔐 Se connecter avec Microsoft
+    </button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <header>
+    <div>
+      <div class="h1" style="font-size:15px;font-weight:bold;color:white;">📅 Périodes 2026-2027</div>
+      <div class="sub">Collège des Apôtres – Jounieh</div>
+    </div>
+    <div class="user-info">
+      <span id="admin-badge" class="admin-badge" style="display:none;">👑 Admin</span>
+      <span id="user-badge" class="user-badge">…</span>
+      <button class="btn btn-danger btn-sm" onclick="signOut()">Déconnexion</button>
+    </div>
+  </header>
+
+  <div class="container">
+    <div id="loading-msg" style="text-align:center;padding:40px;color:#666;">
+      <span class="spinner"></span> Chargement des données…
+    </div>
+    <div id="main-content" style="display:none;">
+      <div class="tabs" id="tabs-bar"></div>
+      <div id="cycle-panels"></div>
+    </div>
+  </div>
+
+  <div class="save-bar">
+    <div>
+      <span class="legend-item" style="font-size:10px;">
+        <span class="legend-box" style="background:var(--blue-light);"></span> 25-26 (référence)
+        &nbsp;
+        <span class="legend-box" style="background:var(--green);"></span> 26-27 (à saisir)
+        &nbsp;
+        <span class="legend-box" style="background:var(--orange);"></span> Admin uniquement
+        &nbsp;
+        <span class="legend-box" style="background:var(--yellow);"></span> Total
+      </span>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="save-status" id="save-status"></span>
+      <button class="btn btn-success" onclick="saveAll()" id="save-btn">💾 Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONFIG – update these before deploying
+// ═══════════════════════════════════════════════════════════════
+const CONFIG = {
+  clientId:  "46f9bee8-ce6c-4ea8-ac32-8c18ffaf7c5c",
+  tenantId:  "0ce223f6-3606-4192-bfe5-63440d708a7a",
+  siteId:    "apotresedulb.sharepoint.com,8490485f-6089-48ba-8a03-18eabfeacfd1,d23ab96f-66fe-45d4-a625-a027739e4160",
+  fileId:    "265776C4-4587-45E3-9B81-AFCD987BAF24",
+  // driveId is fetched automatically at runtime — no need to set it
+};
+
+const SCOPES = ["User.Read","Files.ReadWrite","Sites.ReadWrite.All"];
+
+// ═══════════════════════════════════════════════════════════════
+// MSAL setup
+// ═══════════════════════════════════════════════════════════════
+const msalApp = new msal.PublicClientApplication({
+  auth: { clientId: CONFIG.clientId, tenantId: CONFIG.tenantId,
+          redirectUri: window.location.origin + window.location.pathname },
+  cache: { cacheLocation:"sessionStorage" }
+});
+
+let currentUser = null, isAdmin = false;
+let coordinatorMap = {};  // subject → cycles[]
+let adminEmails    = [];
+let workbookData   = {};  // sheetName → rows[]
+let pendingChanges = {};  // sheetName → { rowIdx → {col, value} }
+
+// ═══════════════════════════════════════════════════════════════
+// Auth
+// ═══════════════════════════════════════════════════════════════
+async function signIn() {
+  try {
+    const res = await msalApp.loginPopup({ scopes: SCOPES });
+    currentUser = res.account;
+    await initApp();
+  } catch(e) { alert("Erreur de connexion: " + e.message); }
+}
+
+function signOut() {
+  msalApp.logoutPopup();
+  location.reload();
+}
+
+async function getToken() {
+  const accounts = msalApp.getAllAccounts();
+  if (!accounts.length) throw new Error("Non connecté");
+  const res = await msalApp.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
+  return res.accessToken;
+}
+
+async function graphGet(path) {
+  const token = await getToken();
+  const r = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    headers: { Authorization:`Bearer ${token}` }
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function graphPatch(path, body) {
+  const token = await getToken();
+  const r = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    method:"PATCH", headers:{ Authorization:`Bearer ${token}`, "Content-Type":"application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Init
+// ═══════════════════════════════════════════════════════════════
+
+// Fetch driveId once and cache it — same approach as giveaway app
+async function getDriveId() {
+  if (window._driveId) return window._driveId;
+  const drive = await graphGet(`/sites/${CONFIG.siteId}/drive`);
+  window._driveId = drive.id;
+  return drive.id;
+}
+
+// Shortcut for Excel worksheet API path
+async function excelBase(worksheet) {
+  const driveId = await getDriveId();
+  return `/sites/${CONFIG.siteId}/drives/${driveId}/items/${CONFIG.fileId}/workbook/worksheets/${worksheet}`;
+}
+
+async function initApp() {
+  document.getElementById("login-screen").style.display = "none";
+  document.getElementById("app").style.display = "block";
+
+  const email = currentUser.username.toLowerCase();
+  document.getElementById("user-badge").textContent = currentUser.name || email;
+
+  try {
+    // Load Config sheet → admin emails
+    await loadConfig(email);
+    // Load Coordinators sheet
+    await loadCoordinators(email);
+    // Render UI
+    renderApp();
+  } catch(e) {
+    document.getElementById("loading-msg").innerHTML =
+      `<span style="color:#c00;">❌ Erreur: ${e.message}</span><br/><small>Vérifiez la configuration (CONFIG) dans index.html</small>`;
+  }
+}
+
+async function loadConfig(email) {
+  const base = (await excelBase('Config')) + '/usedRange';
+  const data = await graphGet(base);
+  const rows = data.values || [];
+  // Admin emails start at row 5 (index 4), col A (index 0)
+  for (let i = 4; i < rows.length; i++) {
+    const v = (rows[i][0] || "").toString().toLowerCase().trim();
+    if (v) adminEmails.push(v);
+  }
+  isAdmin = adminEmails.includes(email);
+  if (isAdmin) document.getElementById("admin-badge").style.display = "inline";
+}
+
+async function loadCoordinators(email) {
+  const data = await graphGet(
+    (await excelBase('Coordinators')) + '/usedRange'
+  );
+  const rows = (data.values || []).slice(1); // skip header
+  coordinatorMap = {};
+  for (const row of rows) {
+    const coordEmail = (row[0]||"").toLowerCase().trim();
+    const subject    = (row[1]||"").trim();
+    const cycles     = (row[2]||"").split(",").map(s=>s.trim()).filter(Boolean);
+    if (coordEmail === email.toLowerCase()) {
+      coordinatorMap[subject] = cycles;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Render
+// ═══════════════════════════════════════════════════════════════
+const CYCLES = [
+  { key:"Maternelle",        label:"Maternelle" },
+  { key:"Cycle2",            label:"Cycle 2" },
+  { key:"Cycle3",            label:"Cycle 3" },
+  { key:"Complementaire",    label:"Complémentaire" },
+  { key:"BacFrancais",       label:"Bac Français" },
+  { key:"SecondaireLibanais",label:"Secondaire Libanais" },
+];
+
+async function renderApp() {
+  // Determine which cycles to show
+  let visibleCycles = CYCLES;
+  if (!isAdmin) {
+    const myCycles = new Set(Object.values(coordinatorMap).flat());
+    visibleCycles = CYCLES.filter(c => myCycles.has(c.key));
+  }
+
+  if (!visibleCycles.length && !isAdmin) {
+    document.getElementById("loading-msg").innerHTML =
+      `<span style="color:#666;">Aucune matière assignée à votre compte.<br/>Contactez l'administrateur.</span>`;
+    return;
+  }
+
+  // Load all needed sheets
+  document.getElementById("loading-msg").innerHTML = '<span class="spinner"></span> Chargement des feuilles…';
+  for (const c of visibleCycles) {
+    await loadSheet(c.key);
+  }
+
+  document.getElementById("loading-msg").style.display = "none";
+  document.getElementById("main-content").style.display = "block";
+
+  const tabsBar = document.getElementById("tabs-bar");
+  const panels  = document.getElementById("cycle-panels");
+  tabsBar.innerHTML = "";
+  panels.innerHTML  = "";
+
+  visibleCycles.forEach((c, idx) => {
+    const tab = document.createElement("div");
+    tab.className = "tab" + (idx===0?" active":"");
+    tab.textContent = c.label;
+    tab.dataset.cycle = c.key;
+    tab.onclick = () => switchTab(c.key);
+    tabsBar.appendChild(tab);
+
+    const panel = document.createElement("div");
+    panel.className = "cycle-panel" + (idx===0?" active":"");
+    panel.id = "panel-" + c.key;
+    panel.innerHTML = buildCycleHTML(c.key);
+    panels.appendChild(panel);
+  });
+
+  updateAllCounters();
+}
+
+function switchTab(key) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.cycle===key));
+  document.querySelectorAll(".cycle-panel").forEach(p => p.classList.toggle("active", p.id==="panel-"+key));
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Load sheet data
+// ═══════════════════════════════════════════════════════════════
+async function loadSheet(sheetKey) {
+  const data = await graphGet(
+    (await excelBase(sheetKey)) + '/usedRange'
+  );
+  workbookData[sheetKey] = data.values || [];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Build HTML for a cycle
+// ═══════════════════════════════════════════════════════════════
+function buildCycleHTML(sheetKey) {
+  const rows = workbookData[sheetKey];
+  if (!rows || rows.length < 4) return "<p>Données non disponibles</p>";
+
+  // Row 2 (idx 1) = class headers (merged), Row 3 (idx 2) = 25-26/26-27/Remarques
+  // We parse class names from row 2 — every 3 cols starting at col 2 (idx 2)
+  const classRow = rows[1] || [];
+  const classes  = [];
+  for (let ci = 2; ci < classRow.length; ci += 3) {
+    const v = (classRow[ci] || "").toString().trim();
+    if (v) classes.push({ name: v, colIdx: ci });
+  }
+
+  // Counter pills
+  let countersHTML = '<div class="counters-bar">';
+  classes.forEach(cls => {
+    countersHTML += `<div class="counter-pill" id="counter-${sheetKey}-${cls.name}">
+      <span class="label">${cls.name}</span>
+      <span class="val" id="cval-${sheetKey}-${cls.name}">0/35</span>
+    </div>`;
+  });
+  countersHTML += "</div>";
+
+  // Table
+  let html = countersHTML + '<div class="table-wrap"><table>';
+
+  // Header row 1 – classes
+  html += '<thead><tr class="class-hdr"><th colspan="2">Matière</th>';
+  classes.forEach(cls => {
+    html += `<th colspan="3">${cls.name}</th>`;
+  });
+  html += "</tr>";
+
+  // Header row 2 – 25-26 / 26-27 / Remarques
+  html += '<tr class="sub-hdr"><th></th><th></th>';
+  classes.forEach(() => {
+    html += '<th class="col-25">25-26</th><th class="col-26">26-27</th><th class="col-rem">Remarques</th>';
+  });
+  html += "</tr></thead><tbody>";
+
+  // Data rows (idx 3 onward, skip last total row)
+  const dataRows = rows.slice(3);
+  dataRows.forEach((row, ri) => {
+    const subject    = (row[1] || "").toString().trim();
+    if (!subject || subject.toUpperCase() === "TOTAL") return;
+    const adminOnly  = (row[0] || "").toString().includes("🔒");
+    const canEdit    = isAdmin || (!adminOnly && coordinatorMap[subject]);
+
+    const trClass = adminOnly ? ' class="admin-row"' : "";
+    html += `<tr${trClass}>`;
+    html += `<td class="lock-icon">${adminOnly?"🔒":""}</td>`;
+    html += `<td class="subject">${subject}</td>`;
+
+    classes.forEach(cls => {
+      const ci   = cls.colIdx;
+      const v25  = (row[ci]   ?? "").toString();
+      const v26  = (row[ci+1] ?? "").toString();
+      const rem  = (row[ci+2] ?? "").toString();
+
+      const rowInSheet = ri + 4; // Excel row number (1-indexed, +3 for header rows +1)
+      const inputId    = `inp-${sheetKey}-${cls.name}-${ri}`;
+      const remId      = `rem-${sheetKey}-${cls.name}-${ri}`;
+
+      html += `<td class="v25">${v25}</td>`;
+
+      if (canEdit) {
+        html += `<td style="background:${adminOnly?"var(--orange)":"var(--green)"}; padding:3px;">
+          <input class="v26-input" id="${inputId}"
+            type="number" min="0" max="35" step="0.5"
+            value="${v26}"
+            data-sheet="${sheetKey}" data-cls="${cls.name}" data-rowidx="${ri}" data-colidx="${ci+1}"
+            onchange="onValueChange(this)"
+            ${adminOnly && !isAdmin ? "disabled" : ""}/>
+        </td>`;
+        html += `<td style="padding:3px;">
+          <textarea class="rem-input" id="${remId}"
+            data-sheet="${sheetKey}" data-cls="${cls.name}" data-rowidx="${ri}" data-colidx="${ci+2}"
+            onchange="onValueChange(this)">${rem}</textarea>
+        </td>`;
+      } else {
+        html += `<td class="v25" style="background:${adminOnly?"var(--orange)":"#f9f9f9"};">${v26}</td>`;
+        html += `<td style="background:#f9f9f9;font-size:10px;color:#666;">${rem}</td>`;
+      }
+    });
+
+    html += "</tr>";
+  });
+
+  // Total row
+  html += '<tr class="total-row"><td></td><td class="subject">TOTAL</td>';
+  classes.forEach(cls => {
+    html += `<td id="tot25-${sheetKey}-${cls.name}">–</td>
+             <td id="tot26-${sheetKey}-${cls.name}">–</td>
+             <td></td>`;
+  });
+  html += "</tr></tbody></table></div>";
+
+  return html;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Live counter logic
+// ═══════════════════════════════════════════════════════════════
+function onValueChange(el) {
+  const { sheet, cls, rowidx, colidx } = el.dataset;
+  const val = el.tagName === "TEXTAREA" ? el.value : (parseFloat(el.value)||0);
+
+  // Store pending change
+  if (!pendingChanges[sheet]) pendingChanges[sheet] = {};
+  const key = `${rowidx}_${colidx}`;
+  pendingChanges[sheet][key] = { rowidx: parseInt(rowidx), colidx: parseInt(colidx), value: val };
+
+  // Update in-memory workbook
+  if (workbookData[sheet]) {
+    const excelRow = parseInt(rowidx) + 3; // 0-indexed data + 3 header rows
+    if (!workbookData[sheet][excelRow]) workbookData[sheet][excelRow] = [];
+    workbookData[sheet][excelRow][parseInt(colidx)] = val;
+  }
+
+  updateCounters(sheet);
+  document.getElementById("save-status").textContent = "● Modifications non enregistrées";
+  document.getElementById("save-status").className = "save-status saving";
+}
+
+function updateAllCounters() {
+  Object.keys(workbookData).forEach(updateCounters);
+}
+
+function updateCounters(sheetKey) {
+  const rows = workbookData[sheetKey];
+  if (!rows || rows.length < 4) return;
+
+  const classRow = rows[1] || [];
+  const classes  = [];
+  for (let ci = 2; ci < classRow.length; ci += 3) {
+    const v = (classRow[ci] || "").toString().trim();
+    if (v) classes.push({ name:v, colIdx:ci });
+  }
+
+  classes.forEach(cls => {
+    let sum25 = 0, sum26 = 0;
+    const dataRows = rows.slice(3);
+    dataRows.forEach(row => {
+      const subject = (row[1]||"").toString().trim();
+      if (!subject || subject.toUpperCase() === "TOTAL") return;
+      const v25 = parseFloat((row[cls.colIdx]   || "").toString()) || 0;
+      const v26 = parseFloat((row[cls.colIdx+1] || "").toString()) || 0;
+      sum25 += v25;
+      sum26 += v26;
+    });
+
+    // Update total row cells
+    const t25 = document.getElementById(`tot25-${sheetKey}-${cls.name}`);
+    const t26 = document.getElementById(`tot26-${sheetKey}-${cls.name}`);
+    if (t25) t25.textContent = sum25 || "–";
+    if (t26) {
+      t26.textContent = sum26 || "–";
+      t26.className = sum26 > 35 ? "total-val over" : "total-val";
+    }
+
+    // Update counter pill
+    const pill = document.getElementById(`counter-${sheetKey}-${cls.name}`);
+    const cval = document.getElementById(`cval-${sheetKey}-${cls.name}`);
+    if (pill && cval) {
+      cval.textContent = `${sum26}/35`;
+      pill.classList.toggle("over", sum26 > 35);
+    }
+
+    // Highlight inputs in that column if over
+    document.querySelectorAll(`input[data-sheet="${sheetKey}"][data-cls="${cls.name}"]`).forEach(inp => {
+      inp.classList.toggle("over", sum26 > 35);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Save to Excel via Graph API
+// ═══════════════════════════════════════════════════════════════
+async function saveAll() {
+  if (!Object.keys(pendingChanges).length) {
+    showToast("Aucune modification à enregistrer.", "success");
+    return;
+  }
+
+  const btn = document.getElementById("save-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Enregistrement…';
+  setStatus("Enregistrement en cours…", "saving");
+
+  try {
+    for (const [sheetKey, changes] of Object.entries(pendingChanges)) {
+      // Build batch of cell updates
+      const updates = Object.values(changes);
+      for (const upd of updates) {
+        // Excel row = data rowidx + 3 header rows + 1 (1-indexed)
+        const excelRow = upd.rowidx + 4;
+        const colLetter = colToLetter(upd.colidx + 1); // +1 because Excel cols are 1-indexed
+        const addr = `${colLetter}${excelRow}`;
+        await graphPatch(
+          `${await excelBase(sheetKey)}/range(address='${addr}')`,
+          { values: [[upd.value]] }
+        );
+      }
+    }
+
+    pendingChanges = {};
+    setStatus("✓ Enregistré avec succès", "saved");
+    showToast("✅ Données enregistrées avec succès!", "success");
+
+    // Mark tabs with data
+    document.querySelectorAll(".tab").forEach(tab => {
+      const key = tab.dataset.cycle;
+      const hasInput = document.querySelector(`input[data-sheet="${key}"]`);
+      if (hasInput) tab.classList.add("has-data");
+    });
+
+  } catch(e) {
+    setStatus("❌ Erreur: " + e.message, "error");
+    showToast("❌ Erreur d'enregistrement: " + e.message, "error");
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = "💾 Enregistrer";
+}
+
+function setStatus(msg, cls) {
+  const el = document.getElementById("save-status");
+  el.textContent = msg;
+  el.className = "save-status " + cls;
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = type;
+  t.style.display = "block";
+  setTimeout(() => t.style.display = "none", 3500);
+}
+
+function colToLetter(col) {
+  let letter = "";
+  while (col > 0) {
+    const rem = (col - 1) % 26;
+    letter = String.fromCharCode(65 + rem) + letter;
+    col = Math.floor((col - 1) / 26);
+  }
+  return letter;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Auto-login on page load
+// ═══════════════════════════════════════════════════════════════
+window.addEventListener("load", async () => {
+  await msalApp.handleRedirectPromise();
+  const accounts = msalApp.getAllAccounts();
+  if (accounts.length) {
+    currentUser = accounts[0];
+    await initApp();
+  }
+});
+</script>
+</body>
+</html>
