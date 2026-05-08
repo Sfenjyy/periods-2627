@@ -441,103 +441,170 @@ async function loadSheet(sheetKey) {
 // ═══════════════════════════════════════════════════════════════
 // Build HTML for a cycle
 // ═══════════════════════════════════════════════════════════════
+const BAC_SHEETS = ["Maternelle","Cycle2","Cycle3","Complementaire","SecondaireLibanais"];
+
 function buildCycleHTML(sheetKey) {
   const rows = workbookData[sheetKey];
   if (!rows || rows.length < 4) return "<p>Données non disponibles</p>";
 
-  // Row 2 (idx 1) = class headers (merged), Row 3 (idx 2) = 25-26/26-27/Remarques
-  // We parse class names from row 2 — every 3 cols starting at col 2 (idx 2)
+  const hasBac = BAC_SHEETS.includes(sheetKey);
+  const colsPerClass = hasBac ? 5 : 3;
+
   const classRow = rows[1] || [];
   const classes  = [];
-  for (let ci = 2; ci < classRow.length; ci += 3) {
+  for (let ci = 2; ci < classRow.length; ci += colsPerClass) {
     const v = (classRow[ci] || "").toString().trim();
     if (v) classes.push({ name: v, colIdx: ci });
   }
 
-  // Counter pills
+  // Counter pills — one per class per editable column
   let countersHTML = '<div class="counters-bar">';
   classes.forEach(cls => {
-    countersHTML += `<div class="counter-pill" id="counter-${sheetKey}-${cls.name}">
-      <span class="label">${cls.name}</span>
-      <span class="val" id="cval-${sheetKey}-${cls.name}">0/35</span>
-    </div>`;
+    if (hasBac) {
+      countersHTML += `
+        <div class="counter-pill" id="counter-${sheetKey}-${cls.name}-bl">
+          <span class="label" style="color:#4A235A;">${cls.name} BL</span>
+          <span class="val" id="cval-${sheetKey}-${cls.name}-bl">0/35</span>
+        </div>
+        <div class="counter-pill" id="counter-${sheetKey}-${cls.name}-bf">
+          <span class="label" style="color:#1E4D2B;">${cls.name} BF</span>
+          <span class="val" id="cval-${sheetKey}-${cls.name}-bf">0/35</span>
+        </div>
+        <div class="counter-pill" id="counter-${sheetKey}-${cls.name}-2627">
+          <span class="label">${cls.name} 26-27</span>
+          <span class="val" id="cval-${sheetKey}-${cls.name}-2627">0/35</span>
+        </div>`;
+    } else {
+      countersHTML += `<div class="counter-pill" id="counter-${sheetKey}-${cls.name}-2627">
+        <span class="label">${cls.name}</span>
+        <span class="val" id="cval-${sheetKey}-${cls.name}-2627">0/35</span>
+      </div>`;
+    }
   });
   countersHTML += "</div>";
 
-  // Table
   let html = countersHTML + '<div class="table-wrap"><table>';
 
-  // Header row 1 – classes
-  html += '<thead><tr class="class-hdr"><th colspan="2">Matière</th>';
-  classes.forEach(cls => {
-    html += `<th colspan="3">${cls.name}</th>`;
-  });
+  // Header row 1
+  html += `<thead><tr class="class-hdr"><th colspan="2">Matière</th>`;
+  classes.forEach(cls => { html += `<th colspan="${colsPerClass}">${cls.name}</th>`; });
   html += "</tr>";
 
-  // Header row 2 – 25-26 / 26-27 / Remarques
+  // Header row 2
   html += '<tr class="sub-hdr"><th></th><th></th>';
   classes.forEach(() => {
-    html += '<th class="col-25">25-26</th><th class="col-26">26-27</th><th class="col-rem">Remarques</th>';
+    if (hasBac) {
+      html += `<th class="col-25">25-26</th>
+               <th style="background:#EAD1DC;color:#4A235A;font-size:10px;font-weight:bold;">Bac Lib.</th>
+               <th style="background:#D9EAD3;color:#1E4D2B;font-size:10px;font-weight:bold;">Bac Fr.</th>
+               <th class="col-26">26-27</th>
+               <th class="col-rem">Remarques</th>`;
+    } else {
+      html += `<th class="col-25">25-26</th><th class="col-26">26-27</th><th class="col-rem">Remarques</th>`;
+    }
   });
   html += "</tr></thead><tbody>";
 
-  // Data rows (idx 3 onward, skip last total row)
+  // Data rows
   const dataRows = rows.slice(3);
   dataRows.forEach((row, ri) => {
-    const subject    = (row[1] || "").toString().trim();
+    const subject  = (row[1] || "").toString().trim();
     if (!subject || subject.toUpperCase() === "TOTAL") return;
-    const adminOnly  = (row[0] || "").toString().includes("🔒");
-    const canEdit    = isAdmin || (!adminOnly && coordinatorMap[subject]);
+    const adminOnly = (row[0] || "").toString().includes("🔒");
+    const canEdit   = isAdmin || (!adminOnly && coordinatorMap[subject]);
 
-    const trClass = adminOnly ? ' class="admin-row"' : "";
-    html += `<tr${trClass}>`;
+    html += `<tr${adminOnly?' class="admin-row"':""}>`;
     html += `<td class="lock-icon">${adminOnly?"🔒":""}</td>`;
     html += `<td class="subject">${subject}</td>`;
 
     classes.forEach(cls => {
-      const ci   = cls.colIdx;
-      const v25  = (row[ci]   ?? "").toString();
-      const v26  = (row[ci+1] ?? "").toString();
-      const rem  = (row[ci+2] ?? "").toString();
-
-      const rowInSheet = ri + 4; // Excel row number (1-indexed, +3 for header rows +1)
-      const inputId    = `inp-${sheetKey}-${cls.name}-${ri}`;
-      const remId      = `rem-${sheetKey}-${cls.name}-${ri}`;
+      const ci  = cls.colIdx;
+      const v25 = (row[ci] ?? "").toString();
 
       html += `<td class="v25">${v25}</td>`;
 
-      if (canEdit) {
-        html += `<td style="background:${adminOnly?"var(--orange)":"var(--green)"}; padding:3px;">
-          <input class="v26-input" id="${inputId}"
-            type="number" min="0" max="35" step="0.5"
-            value="${v26}"
-            data-sheet="${sheetKey}" data-cls="${cls.name}" data-rowidx="${ri}" data-colidx="${ci+1}"
-            onchange="onValueChange(this)"
-            ${adminOnly && !isAdmin ? "disabled" : ""}/>
-        </td>`;
-        html += `<td style="padding:3px;">
-          <textarea class="rem-input" id="${remId}"
-            data-sheet="${sheetKey}" data-cls="${cls.name}" data-rowidx="${ri}" data-colidx="${ci+2}"
-            onchange="onValueChange(this)">${rem}</textarea>
-        </td>`;
+      if (hasBac) {
+        const vbl  = (row[ci+1] ?? "").toString();
+        const vbf  = (row[ci+2] ?? "").toString();
+        const v26  = (row[ci+3] ?? "").toString();
+        const rem  = (row[ci+4] ?? "").toString();
+
+        if (canEdit) {
+          html += `<td style="background:${adminOnly?"var(--orange)":"#EAD1DC"};padding:3px;">
+            <input class="v26-input" style="background:#EAD1DC;"
+              type="number" min="0" max="35" step="0.5" value="${vbl}"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="bl"
+              data-rowidx="${ri}" data-colidx="${ci+1}"
+              onchange="onValueChange(this)" ${adminOnly&&!isAdmin?"disabled":""}/>
+          </td>
+          <td style="background:${adminOnly?"var(--orange)":"#D9EAD3"};padding:3px;">
+            <input class="v26-input" style="background:#D9EAD3;"
+              type="number" min="0" max="35" step="0.5" value="${vbf}"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="bf"
+              data-rowidx="${ri}" data-colidx="${ci+2}"
+              onchange="onValueChange(this)" ${adminOnly&&!isAdmin?"disabled":""}/>
+          </td>
+          <td style="background:${adminOnly?"var(--orange)":"var(--green)"};padding:3px;">
+            <input class="v26-input"
+              type="number" min="0" max="35" step="0.5" value="${v26}"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="2627"
+              data-rowidx="${ri}" data-colidx="${ci+3}"
+              onchange="onValueChange(this)" ${adminOnly&&!isAdmin?"disabled":""}/>
+          </td>
+          <td style="padding:3px;">
+            <textarea class="rem-input"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="rem"
+              data-rowidx="${ri}" data-colidx="${ci+4}"
+              onchange="onValueChange(this)">${rem}</textarea>
+          </td>`;
+        } else {
+          html += `<td class="v25" style="background:${adminOnly?"var(--orange)":"#EAD1DC"};">${vbl}</td>
+                   <td class="v25" style="background:${adminOnly?"var(--orange)":"#D9EAD3"};">${vbf}</td>
+                   <td class="v25" style="background:${adminOnly?"var(--orange)":"#f9f9f9"};">${v26}</td>
+                   <td style="background:#f9f9f9;font-size:10px;color:#666;">${rem}</td>`;
+        }
       } else {
-        html += `<td class="v25" style="background:${adminOnly?"var(--orange)":"#f9f9f9"};">${v26}</td>`;
-        html += `<td style="background:#f9f9f9;font-size:10px;color:#666;">${rem}</td>`;
+        const v26 = (row[ci+1] ?? "").toString();
+        const rem = (row[ci+2] ?? "").toString();
+        if (canEdit) {
+          html += `<td style="background:${adminOnly?"var(--orange)":"var(--green)"};padding:3px;">
+            <input class="v26-input"
+              type="number" min="0" max="35" step="0.5" value="${v26}"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="2627"
+              data-rowidx="${ri}" data-colidx="${ci+1}"
+              onchange="onValueChange(this)" ${adminOnly&&!isAdmin?"disabled":""}/>
+          </td>
+          <td style="padding:3px;">
+            <textarea class="rem-input"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="rem"
+              data-rowidx="${ri}" data-colidx="${ci+2}"
+              onchange="onValueChange(this)">${rem}</textarea>
+          </td>`;
+        } else {
+          html += `<td class="v25" style="background:${adminOnly?"var(--orange)":"#f9f9f9"};">${v26}</td>
+                   <td style="background:#f9f9f9;font-size:10px;color:#666;">${rem}</td>`;
+        }
       }
     });
-
     html += "</tr>";
   });
 
   // Total row
   html += '<tr class="total-row"><td></td><td class="subject">TOTAL</td>';
   classes.forEach(cls => {
-    html += `<td id="tot25-${sheetKey}-${cls.name}">–</td>
-             <td id="tot26-${sheetKey}-${cls.name}">–</td>
-             <td></td>`;
+    if (hasBac) {
+      html += `<td id="tot25-${sheetKey}-${cls.name}">–</td>
+               <td id="totbl-${sheetKey}-${cls.name}" style="background:#EAD1DC;">–</td>
+               <td id="totbf-${sheetKey}-${cls.name}" style="background:#D9EAD3;">–</td>
+               <td id="tot26-${sheetKey}-${cls.name}">–</td>
+               <td></td>`;
+    } else {
+      html += `<td id="tot25-${sheetKey}-${cls.name}">–</td>
+               <td id="tot26-${sheetKey}-${cls.name}">–</td>
+               <td></td>`;
+    }
   });
   html += "</tr></tbody></table></div>";
-
   return html;
 }
 
@@ -573,46 +640,65 @@ function updateCounters(sheetKey) {
   const rows = workbookData[sheetKey];
   if (!rows || rows.length < 4) return;
 
+  const hasBac = BAC_SHEETS.includes(sheetKey);
+  const colsPerClass = hasBac ? 5 : 3;
+
   const classRow = rows[1] || [];
   const classes  = [];
-  for (let ci = 2; ci < classRow.length; ci += 3) {
+  for (let ci = 2; ci < classRow.length; ci += colsPerClass) {
     const v = (classRow[ci] || "").toString().trim();
     if (v) classes.push({ name:v, colIdx:ci });
   }
 
   classes.forEach(cls => {
-    let sum25 = 0, sum26 = 0;
-    const dataRows = rows.slice(3);
-    dataRows.forEach(row => {
+    let sum25=0, sumBL=0, sumBF=0, sum26=0;
+    rows.slice(3).forEach(row => {
       const subject = (row[1]||"").toString().trim();
-      if (!subject || subject.toUpperCase() === "TOTAL") return;
-      const v25 = parseFloat((row[cls.colIdx]   || "").toString()) || 0;
-      const v26 = parseFloat((row[cls.colIdx+1] || "").toString()) || 0;
-      sum25 += v25;
-      sum26 += v26;
+      if (!subject || subject.toUpperCase()==="TOTAL") return;
+      sum25 += parseFloat((row[cls.colIdx]   ||"").toString())||0;
+      if (hasBac) {
+        sumBL += parseFloat((row[cls.colIdx+1]||"").toString())||0;
+        sumBF += parseFloat((row[cls.colIdx+2]||"").toString())||0;
+        sum26 += parseFloat((row[cls.colIdx+3]||"").toString())||0;
+      } else {
+        sum26 += parseFloat((row[cls.colIdx+1]||"").toString())||0;
+      }
     });
 
-    // Update total row cells
+    // Update total row
     const t25 = document.getElementById(`tot25-${sheetKey}-${cls.name}`);
     const t26 = document.getElementById(`tot26-${sheetKey}-${cls.name}`);
-    if (t25) t25.textContent = sum25 || "–";
-    if (t26) {
-      t26.textContent = sum26 || "–";
-      t26.className = sum26 > 35 ? "total-val over" : "total-val";
-    }
+    if (t25) t25.textContent = sum25||"–";
+    if (t26) { t26.textContent=sum26||"–"; t26.className=sum26>35?"total-val over":"total-val"; }
 
-    // Update counter pill
-    const pill = document.getElementById(`counter-${sheetKey}-${cls.name}`);
-    const cval = document.getElementById(`cval-${sheetKey}-${cls.name}`);
-    if (pill && cval) {
-      cval.textContent = `${sum26}/35`;
-      pill.classList.toggle("over", sum26 > 35);
-    }
+    if (hasBac) {
+      const tbl = document.getElementById(`totbl-${sheetKey}-${cls.name}`);
+      const tbf = document.getElementById(`totbf-${sheetKey}-${cls.name}`);
+      if (tbl) { tbl.textContent=sumBL||"–"; tbl.className=sumBL>35?"total-val over":"total-val"; }
+      if (tbf) { tbf.textContent=sumBF||"–"; tbf.className=sumBF>35?"total-val over":"total-val"; }
 
-    // Highlight inputs in that column if over
-    document.querySelectorAll(`input[data-sheet="${sheetKey}"][data-cls="${cls.name}"]`).forEach(inp => {
-      inp.classList.toggle("over", sum26 > 35);
-    });
+      // Counter pills
+      ["bl","bf","2627"].forEach(type => {
+        const sum = type==="bl"?sumBL:type==="bf"?sumBF:sum26;
+        const pill = document.getElementById(`counter-${sheetKey}-${cls.name}-${type}`);
+        const cval = document.getElementById(`cval-${sheetKey}-${cls.name}-${type}`);
+        if (pill&&cval) { cval.textContent=`${sum}/35`; pill.classList.toggle("over",sum>35); }
+      });
+
+      // Highlight inputs
+      document.querySelectorAll(`input[data-sheet="${sheetKey}"][data-cls="${cls.name}"]`).forEach(inp => {
+        const type = inp.dataset.coltype;
+        const sum  = type==="bl"?sumBL:type==="bf"?sumBF:sum26;
+        inp.classList.toggle("over", sum>35);
+      });
+    } else {
+      const pill = document.getElementById(`counter-${sheetKey}-${cls.name}-2627`);
+      const cval = document.getElementById(`cval-${sheetKey}-${cls.name}-2627`);
+      if (pill&&cval) { cval.textContent=`${sum26}/35`; pill.classList.toggle("over",sum26>35); }
+      document.querySelectorAll(`input[data-sheet="${sheetKey}"][data-cls="${cls.name}"]`).forEach(inp => {
+        inp.classList.toggle("over",sum26>35);
+      });
+    }
   });
 }
 
