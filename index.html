@@ -302,7 +302,7 @@ async function graphPatch(path, body) {
 // Init
 // ═══════════════════════════════════════════════════════════════
 
-// Fetch driveId once and cache it — same approach as giveaway app
+// Fetch driveId once and cache it
 async function getDriveId() {
   if (window._driveId) return window._driveId;
   const drive = await graphGet(`/sites/${CONFIG.siteId}/drive`);
@@ -310,10 +310,28 @@ async function getDriveId() {
   return drive.id;
 }
 
+// Resolve fileId — try configured ID first, fallback to search by filename
+async function getFileId() {
+  if (window._resolvedFileId) return window._resolvedFileId;
+  const driveId = await getDriveId();
+  // Try direct access first
+  try {
+    await graphGet(`/drives/${driveId}/items/${CONFIG.fileId}`);
+    window._resolvedFileId = CONFIG.fileId;
+    return CONFIG.fileId;
+  } catch(e) {
+    // Fallback: search by filename in drive root
+    const result = await graphGet(`/drives/${driveId}/root:/Periods_2627_Backend.xlsx`);
+    window._resolvedFileId = result.id;
+    return result.id;
+  }
+}
+
 // Shortcut for Excel worksheet API path
 async function excelBase(worksheet) {
   const driveId = await getDriveId();
-  return `/sites/${CONFIG.siteId}/drives/${driveId}/items/${CONFIG.fileId}/workbook/worksheets/${worksheet}`;
+  const fileId  = await getFileId();
+  return `/drives/${driveId}/items/${fileId}/workbook/worksheets/${worksheet}`;
 }
 
 async function initApp() {
@@ -441,66 +459,57 @@ async function loadSheet(sheetKey) {
 // ═══════════════════════════════════════════════════════════════
 // Build HTML for a cycle
 // ═══════════════════════════════════════════════════════════════
-const BAC_SHEETS = ["Maternelle","Cycle2","Cycle3","Complementaire","SecondaireLibanais"];
+const BAC_SHEET = "BacFrancais";  // only this sheet has 3 cols per class
 
 function buildCycleHTML(sheetKey) {
   const rows = workbookData[sheetKey];
   if (!rows || rows.length < 4) return "<p>Données non disponibles</p>";
 
-  const hasBac = BAC_SHEETS.includes(sheetKey);
-  const colsPerClass = hasBac ? 5 : 3;
+  const isBac = sheetKey === BAC_SHEET;
+  const cpc   = isBac ? 3 : 1;  // cols per class
 
+  // Parse class names from row 2
   const classRow = rows[1] || [];
   const classes  = [];
-  for (let ci = 2; ci < classRow.length; ci += colsPerClass) {
+  for (let ci = 2; ci < classRow.length; ci += cpc) {
     const v = (classRow[ci] || "").toString().trim();
     if (v) classes.push({ name: v, colIdx: ci });
   }
 
-  // Counter pills — one per class per editable column
-  let countersHTML = '<div class="counters-bar">';
-  classes.forEach(cls => {
-    if (hasBac) {
+  // Counter pills — only for BacFrancais (proposition + double cursus)
+  let countersHTML = "";
+  if (isBac) {
+    countersHTML = '<div class="counters-bar">';
+    classes.forEach(cls => {
       countersHTML += `
-        <div class="counter-pill" id="counter-${sheetKey}-${cls.name}-bl">
-          <span class="label" style="color:#4A235A;">${cls.name} BL</span>
-          <span class="val" id="cval-${sheetKey}-${cls.name}-bl">0/35</span>
+        <div class="counter-pill" id="counter-${sheetKey}-${cls.name}-prop">
+          <span class="label">${cls.name} Prop.</span>
+          <span class="val" id="cval-${sheetKey}-${cls.name}-prop">0/35</span>
         </div>
-        <div class="counter-pill" id="counter-${sheetKey}-${cls.name}-bf">
-          <span class="label" style="color:#1E4D2B;">${cls.name} BF</span>
-          <span class="val" id="cval-${sheetKey}-${cls.name}-bf">0/35</span>
-        </div>
-        <div class="counter-pill" id="counter-${sheetKey}-${cls.name}-2627">
-          <span class="label">${cls.name} 26-27</span>
-          <span class="val" id="cval-${sheetKey}-${cls.name}-2627">0/35</span>
+        <div class="counter-pill" id="counter-${sheetKey}-${cls.name}-dc">
+          <span class="label" style="color:#4527A0;">${cls.name} DC</span>
+          <span class="val" id="cval-${sheetKey}-${cls.name}-dc">0/35</span>
         </div>`;
-    } else {
-      countersHTML += `<div class="counter-pill" id="counter-${sheetKey}-${cls.name}-2627">
-        <span class="label">${cls.name}</span>
-        <span class="val" id="cval-${sheetKey}-${cls.name}-2627">0/35</span>
-      </div>`;
-    }
-  });
-  countersHTML += "</div>";
+    });
+    countersHTML += "</div>";
+  }
 
   let html = countersHTML + '<div class="table-wrap"><table>';
 
   // Header row 1
   html += `<thead><tr class="class-hdr"><th colspan="2">Matière</th>`;
-  classes.forEach(cls => { html += `<th colspan="${colsPerClass}">${cls.name}</th>`; });
+  classes.forEach(cls => { html += `<th colspan="${cpc}">${cls.name}</th>`; });
   html += "</tr>";
 
   // Header row 2
   html += '<tr class="sub-hdr"><th></th><th></th>';
   classes.forEach(() => {
-    if (hasBac) {
-      html += `<th class="col-25">25-26</th>
-               <th style="background:#EAD1DC;color:#4A235A;font-size:10px;font-weight:bold;">Prog. Lib.</th>
-               <th style="background:#D9EAD3;color:#1E4D2B;font-size:10px;font-weight:bold;">Prog. Fr.</th>
-               <th class="col-26">26-27</th>
-               <th class="col-rem">Remarques</th>`;
+    if (isBac) {
+      html += `<th class="col-26" style="font-size:10px;">26-27<br/>Proposition</th>
+               <th style="background:#EDE7F6;color:#4527A0;font-size:10px;font-weight:bold;">26-27<br/>Double cursus</th>
+               <th style="background:#FFF9C4;color:#7B6000;font-size:10px;font-weight:bold;">Manuels scolaires</th>`;
     } else {
-      html += `<th class="col-25">25-26</th><th class="col-26">26-27</th><th class="col-rem">Remarques</th>`;
+      html += `<th style="background:#FFF9C4;color:#7B6000;font-size:10px;font-weight:bold;">Manuels scolaires</th>`;
     }
   });
   html += "</tr></thead><tbody>";
@@ -508,7 +517,7 @@ function buildCycleHTML(sheetKey) {
   // Data rows
   const dataRows = rows.slice(3);
   dataRows.forEach((row, ri) => {
-    const subject  = (row[1] || "").toString().trim();
+    const subject   = (row[1] || "").toString().trim();
     if (!subject || subject.toUpperCase() === "TOTAL") return;
     const adminOnly = (row[0] || "").toString().includes("🔒");
     const canEdit   = isAdmin || (!adminOnly && coordinatorMap[subject]);
@@ -518,71 +527,51 @@ function buildCycleHTML(sheetKey) {
     html += `<td class="subject">${subject}</td>`;
 
     classes.forEach(cls => {
-      const ci  = cls.colIdx;
-      const v25 = (row[ci] ?? "").toString();
+      const ci = cls.colIdx;
 
-      html += `<td class="v25">${v25}</td>`;
-
-      if (hasBac) {
-        const vbl  = (row[ci+1] ?? "").toString();
-        const vbf  = (row[ci+2] ?? "").toString();
-        const v26  = (row[ci+3] ?? "").toString();
-        const rem  = (row[ci+4] ?? "").toString();
+      if (isBac) {
+        const vProp = (row[ci]   ?? "").toString();
+        const vDC   = (row[ci+1] ?? "").toString();
+        const vMan  = (row[ci+2] ?? "").toString();
 
         if (canEdit) {
-          html += `<td style="background:${adminOnly?"var(--orange)":"#EAD1DC"};padding:3px;">
-            <input class="v26-input" style="background:#EAD1DC;"
-              type="number" min="0" max="35" step="0.5" value="${vbl}"
-              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="bl"
+          html += `
+          <td style="background:${adminOnly?"var(--orange)":"var(--green)"};padding:3px;">
+            <input class="v26-input" type="number" min="0" max="35" step="0.5" value="${vProp}"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="prop"
+              data-rowidx="${ri}" data-colidx="${ci}"
+              onchange="onValueChange(this)" ${adminOnly&&!isAdmin?"disabled":""}/>
+          </td>
+          <td style="background:${adminOnly?"var(--orange)":"#EDE7F6"};padding:3px;">
+            <input class="v26-input" style="background:#EDE7F6;color:#4527A0;" type="number" min="0" max="35" step="0.5" value="${vDC}"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="dc"
               data-rowidx="${ri}" data-colidx="${ci+1}"
               onchange="onValueChange(this)" ${adminOnly&&!isAdmin?"disabled":""}/>
           </td>
-          <td style="background:${adminOnly?"var(--orange)":"#D9EAD3"};padding:3px;">
-            <input class="v26-input" style="background:#D9EAD3;"
-              type="number" min="0" max="35" step="0.5" value="${vbf}"
-              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="bf"
+          <td style="background:${adminOnly?"var(--orange)":"#FFF9C4"};padding:3px;">
+            <textarea class="rem-input" style="background:#FFF9C4;"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="man"
               data-rowidx="${ri}" data-colidx="${ci+2}"
-              onchange="onValueChange(this)" ${adminOnly&&!isAdmin?"disabled":""}/>
-          </td>
-          <td style="background:${adminOnly?"var(--orange)":"var(--green)"};padding:3px;">
-            <input class="v26-input"
-              type="number" min="0" max="35" step="0.5" value="${v26}"
-              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="2627"
-              data-rowidx="${ri}" data-colidx="${ci+3}"
-              onchange="onValueChange(this)" ${adminOnly&&!isAdmin?"disabled":""}/>
-          </td>
-          <td style="padding:3px;">
-            <textarea class="rem-input"
-              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="rem"
-              data-rowidx="${ri}" data-colidx="${ci+4}"
-              onchange="onValueChange(this)">${rem}</textarea>
+              onchange="onValueChange(this)">${vMan}</textarea>
           </td>`;
         } else {
-          html += `<td class="v25" style="background:${adminOnly?"var(--orange)":"#EAD1DC"};">${vbl}</td>
-                   <td class="v25" style="background:${adminOnly?"var(--orange)":"#D9EAD3"};">${vbf}</td>
-                   <td class="v25" style="background:${adminOnly?"var(--orange)":"#f9f9f9"};">${v26}</td>
-                   <td style="background:#f9f9f9;font-size:10px;color:#666;">${rem}</td>`;
+          html += `
+          <td class="v25" style="background:${adminOnly?"var(--orange)":"#f9f9f9"};">${vProp}</td>
+          <td class="v25" style="background:${adminOnly?"var(--orange)":"#EDE7F6"};">${vDC}</td>
+          <td style="background:#f9f9f9;font-size:10px;color:#666;">${vMan}</td>`;
         }
       } else {
-        const v26 = (row[ci+1] ?? "").toString();
-        const rem = (row[ci+2] ?? "").toString();
+        // Simple sheet — just Manuels scolaires textarea
+        const vMan = (row[ci] ?? "").toString();
         if (canEdit) {
-          html += `<td style="background:${adminOnly?"var(--orange)":"var(--green)"};padding:3px;">
-            <input class="v26-input"
-              type="number" min="0" max="35" step="0.5" value="${v26}"
-              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="2627"
-              data-rowidx="${ri}" data-colidx="${ci+1}"
-              onchange="onValueChange(this)" ${adminOnly&&!isAdmin?"disabled":""}/>
-          </td>
-          <td style="padding:3px;">
-            <textarea class="rem-input"
-              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="rem"
-              data-rowidx="${ri}" data-colidx="${ci+2}"
-              onchange="onValueChange(this)">${rem}</textarea>
+          html += `<td style="background:${adminOnly?"var(--orange)":"#FFF9C4"};padding:3px;">
+            <textarea class="rem-input" style="background:#FFF9C4;width:180px;"
+              data-sheet="${sheetKey}" data-cls="${cls.name}" data-coltype="man"
+              data-rowidx="${ri}" data-colidx="${ci}"
+              onchange="onValueChange(this)">${vMan}</textarea>
           </td>`;
         } else {
-          html += `<td class="v25" style="background:${adminOnly?"var(--orange)":"#f9f9f9"};">${v26}</td>
-                   <td style="background:#f9f9f9;font-size:10px;color:#666;">${rem}</td>`;
+          html += `<td style="background:${adminOnly?"var(--orange)":"#f9f9f9"};font-size:10px;color:#666;">${vMan}</td>`;
         }
       }
     });
@@ -592,16 +581,12 @@ function buildCycleHTML(sheetKey) {
   // Total row
   html += '<tr class="total-row"><td></td><td class="subject">TOTAL</td>';
   classes.forEach(cls => {
-    if (hasBac) {
-      html += `<td id="tot25-${sheetKey}-${cls.name}">–</td>
-               <td id="totbl-${sheetKey}-${cls.name}" style="background:#EAD1DC;">–</td>
-               <td id="totbf-${sheetKey}-${cls.name}" style="background:#D9EAD3;">–</td>
-               <td id="tot26-${sheetKey}-${cls.name}">–</td>
-               <td></td>`;
+    if (isBac) {
+      html += `<td id="totprop-${sheetKey}-${cls.name}">–</td>
+               <td id="totdc-${sheetKey}-${cls.name}" style="background:#EDE7F6;">–</td>
+               <td style="background:#FFF9C4;"></td>`;
     } else {
-      html += `<td id="tot25-${sheetKey}-${cls.name}">–</td>
-               <td id="tot26-${sheetKey}-${cls.name}">–</td>
-               <td></td>`;
+      html += `<td style="background:#FFF9C4;"></td>`;
     }
   });
   html += "</tr></tbody></table></div>";
@@ -640,65 +625,44 @@ function updateCounters(sheetKey) {
   const rows = workbookData[sheetKey];
   if (!rows || rows.length < 4) return;
 
-  const hasBac = BAC_SHEETS.includes(sheetKey);
-  const colsPerClass = hasBac ? 5 : 3;
+  const isBac = sheetKey === BAC_SHEET;
+  if (!isBac) return;  // no numeric counters for simple sheets
 
   const classRow = rows[1] || [];
   const classes  = [];
-  for (let ci = 2; ci < classRow.length; ci += colsPerClass) {
+  for (let ci = 2; ci < classRow.length; ci += 3) {
     const v = (classRow[ci] || "").toString().trim();
-    if (v) classes.push({ name:v, colIdx:ci });
+    if (v) classes.push({ name: v, colIdx: ci });
   }
 
   classes.forEach(cls => {
-    let sum25=0, sumBL=0, sumBF=0, sum26=0;
+    let sumProp = 0, sumDC = 0;
     rows.slice(3).forEach(row => {
       const subject = (row[1]||"").toString().trim();
       if (!subject || subject.toUpperCase()==="TOTAL") return;
-      sum25 += parseFloat((row[cls.colIdx]   ||"").toString())||0;
-      if (hasBac) {
-        sumBL += parseFloat((row[cls.colIdx+1]||"").toString())||0;
-        sumBF += parseFloat((row[cls.colIdx+2]||"").toString())||0;
-        sum26 += parseFloat((row[cls.colIdx+3]||"").toString())||0;
-      } else {
-        sum26 += parseFloat((row[cls.colIdx+1]||"").toString())||0;
-      }
+      sumProp += parseFloat((row[cls.colIdx]   ||"").toString())||0;
+      sumDC   += parseFloat((row[cls.colIdx+1] ||"").toString())||0;
     });
 
-    // Update total row
-    const t25 = document.getElementById(`tot25-${sheetKey}-${cls.name}`);
-    const t26 = document.getElementById(`tot26-${sheetKey}-${cls.name}`);
-    if (t25) t25.textContent = sum25||"–";
-    if (t26) { t26.textContent=sum26||"–"; t26.className=sum26>35?"total-val over":"total-val"; }
+    // Total row
+    const tp = document.getElementById(`totprop-${sheetKey}-${cls.name}`);
+    const td = document.getElementById(`totdc-${sheetKey}-${cls.name}`);
+    if (tp) { tp.textContent=sumProp||"–"; tp.className=sumProp>35?"total-val over":"total-val"; }
+    if (td) { td.textContent=sumDC||"–";  td.className=sumDC>35?"total-val over":"total-val"; }
 
-    if (hasBac) {
-      const tbl = document.getElementById(`totbl-${sheetKey}-${cls.name}`);
-      const tbf = document.getElementById(`totbf-${sheetKey}-${cls.name}`);
-      if (tbl) { tbl.textContent=sumBL||"–"; tbl.className=sumBL>35?"total-val over":"total-val"; }
-      if (tbf) { tbf.textContent=sumBF||"–"; tbf.className=sumBF>35?"total-val over":"total-val"; }
+    // Counter pills
+    ["prop","dc"].forEach(type => {
+      const sum  = type==="prop"?sumProp:sumDC;
+      const pill = document.getElementById(`counter-${sheetKey}-${cls.name}-${type}`);
+      const cval = document.getElementById(`cval-${sheetKey}-${cls.name}-${type}`);
+      if (pill&&cval) { cval.textContent=`${sum}/35`; pill.classList.toggle("over",sum>35); }
+    });
 
-      // Counter pills
-      ["bl","bf","2627"].forEach(type => {
-        const sum = type==="bl"?sumBL:type==="bf"?sumBF:sum26;
-        const pill = document.getElementById(`counter-${sheetKey}-${cls.name}-${type}`);
-        const cval = document.getElementById(`cval-${sheetKey}-${cls.name}-${type}`);
-        if (pill&&cval) { cval.textContent=`${sum}/35`; pill.classList.toggle("over",sum>35); }
-      });
-
-      // Highlight inputs
-      document.querySelectorAll(`input[data-sheet="${sheetKey}"][data-cls="${cls.name}"]`).forEach(inp => {
-        const type = inp.dataset.coltype;
-        const sum  = type==="bl"?sumBL:type==="bf"?sumBF:sum26;
-        inp.classList.toggle("over", sum>35);
-      });
-    } else {
-      const pill = document.getElementById(`counter-${sheetKey}-${cls.name}-2627`);
-      const cval = document.getElementById(`cval-${sheetKey}-${cls.name}-2627`);
-      if (pill&&cval) { cval.textContent=`${sum26}/35`; pill.classList.toggle("over",sum26>35); }
-      document.querySelectorAll(`input[data-sheet="${sheetKey}"][data-cls="${cls.name}"]`).forEach(inp => {
-        inp.classList.toggle("over",sum26>35);
-      });
-    }
+    // Highlight inputs
+    document.querySelectorAll(`input[data-sheet="${sheetKey}"][data-cls="${cls.name}"]`).forEach(inp => {
+      const sum = inp.dataset.coltype==="prop"?sumProp:sumDC;
+      inp.classList.toggle("over", sum>35);
+    });
   });
 }
 
